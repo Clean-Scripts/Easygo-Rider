@@ -3,768 +3,138 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <link rel="icon" type="image/png" href="https://raw.githubusercontent.com/Clean-Scripts/EasyGo-Expense-Tracker/refs/heads/main/logo.png">
-    <script src="https://cdn.tailwindcss.com"></script>
-    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
-    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-    <title>EasyGo | Delivery Partner</title>
-    <style>
-        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;700;900&display=swap');
-        body { font-family: 'Inter', sans-serif; }
-        #map { height: 300px; border-radius: 1rem; }
-        .order-card { transition: all 0.3s; }
-        .order-card:hover { transform: translateY(-2px); }
-        .status-ready { border-left: 4px solid #f59e0b; }
-        .status-picked { border-left: 4px solid #3b82f6; }
-        .status-delivered { border-left: 4px solid #10b981; }
-        .pulse {
-            animation: pulse 2s infinite;
-        }
-        @keyframes pulse {
-            0% { transform: scale(1); }
-            50% { transform: scale(1.05); }
-            100% { transform: scale(1); }
-        }
-    </style>
-</head>
-<body class="antialiased bg-gray-100 min-h-screen">
-
-    <!-- Delivery Partner Login -->
-    <div id="login-section" class="min-h-screen flex items-center justify-center">
-        <div class="bg-white p-8 rounded-2xl shadow-lg max-w-md w-full">
-            <div class="text-center mb-8">
-                <img src="https://raw.githubusercontent.com/Clean-Scripts/EasyGo-Expense-Tracker/refs/heads/main/logo.png" 
-                     class="h-20 w-20 mx-auto mb-4">
-                <h1 class="text-2xl font-bold">EasyGo Delivery Partner</h1>
-                <p class="text-gray-600">Pickup and Delivery Management</p>
-            </div>
-            
-            <input type="password" id="delivery-pin" 
-                   placeholder="Enter Delivery PIN" 
-                   class="w-full p-4 border-2 border-gray-300 rounded-xl mb-4 text-center text-2xl"
-                   maxlength="4">
-            
-            <button onclick="loginDelivery()" 
-                    class="w-full py-3 bg-green-500 text-white font-bold rounded-xl hover:bg-green-600">
-                🚚 Start Delivery
-            </button>
-            
-            <p class="text-sm text-gray-500 text-center mt-4">
-                PIN: 3732 (Default - Contact Admin to change)
-            </p>
-        </div>
-    </div>
-
-    <!-- Delivery Dashboard -->
-    <div id="dashboard-section" class="hidden p-4 md:p-8">
-        <div class="flex justify-between items-center mb-8">
-            <div>
-                <h1 class="text-3xl font-bold">EasyGo Delivery Dashboard</h1>
-                <p class="text-gray-600">Manage pickups and deliveries in real-time</p>
-            </div>
-            <div class="flex items-center gap-4">
-                <span id="current-time" class="font-bold"></span>
-                <button onclick="logoutDelivery()" 
-                        class="px-4 py-2 bg-red-500 text-white rounded-lg hover:bg-red-600">
-                    Logout
-                </button>
-            </div>
-        </div>
-
-        <!-- Delivery Partner Info -->
-        <div class="bg-white rounded-2xl shadow-lg p-6 mb-8">
-            <div class="flex items-center justify-between">
-                <div class="flex items-center gap-4">
-                    <div class="w-16 h-16 bg-green-100 rounded-full flex items-center justify-center">
-                        <span class="text-2xl">🚚</span>
-                    </div>
-                    <div>
-                        <h3 class="font-bold text-xl" id="delivery-partner-name">Delivery Partner</h3>
-                        <p class="text-gray-600">Status: <span id="delivery-status" class="font-bold text-green-600">Active</span></p>
-                    </div>
-                </div>
-                <div class="text-right">
-                    <p class="font-bold">Today's Earnings</p>
-                    <p class="text-2xl font-bold text-green-600" id="today-earnings">₹0</p>
-                </div>
-            </div>
-        </div>
-
-        <div class="grid grid-cols-1 lg:grid-cols-2 gap-8">
-            <!-- Ready for Pickup Orders -->
-            <div class="bg-white rounded-2xl shadow-lg p-6">
-                <h2 class="text-xl font-bold mb-6">📦 Ready for Pickup</h2>
-                <div id="pickup-orders" class="space-y-4">
-                    <!-- Orders will load here -->
-                </div>
-            </div>
-
-            <!-- Active Delivery Orders -->
-            <div class="bg-white rounded-2xl shadow-lg p-6">
-                <h2 class="text-xl font-bold mb-6">🛵 Active Deliveries</h2>
-                <div id="delivery-orders" class="space-y-4">
-                    <!-- Orders will load here -->
-                </div>
-            </div>
-        </div>
-
-        <!-- Selected Order Details -->
-        <div id="order-details-section" class="hidden mt-8">
-            <div class="bg-white rounded-2xl shadow-lg p-6 mb-8">
-                <h2 class="text-xl font-bold mb-6">📋 Order Details</h2>
-                <div id="selected-order-details" class="space-y-4">
-                    <!-- Order details will load here -->
-                </div>
-            </div>
-
-            <!-- Map & Actions -->
-            <div class="grid grid-cols-1 lg:grid-cols-2 gap-8">
-                <!-- Map -->
-                <div class="bg-white rounded-2xl shadow-lg p-6">
-                    <h2 class="text-xl font-bold mb-6">📍 Delivery Map</h2>
-                    <div id="map"></div>
-                    
-                    <!-- Navigation -->
-                    <div class="mt-6 space-y-3">
-                        <button id="navigate-restaurant" 
-                                class="w-full p-4 bg-blue-500 text-white font-bold rounded-xl hover:bg-blue-600">
-                            🏪 Navigate to Restaurant
-                        </button>
-                        <button id="navigate-customer" 
-                                class="w-full p-4 bg-green-500 text-white font-bold rounded-xl hover:bg-green-600">
-                            🏠 Navigate to Customer
-                        </button>
-                    </div>
-                </div>
-
-                <!-- Delivery Actions -->
-                <div class="bg-white rounded-2xl shadow-lg p-6">
-                    <h2 class="text-xl font-bold mb-6">⚡ Delivery Actions</h2>
-                    
-                    <!-- Pickup Confirmation -->
-                    <div id="pickup-section" class="mb-8">
-                        <h3 class="font-bold mb-4">✅ Mark as Picked Up</h3>
-                        <button onclick="markAsPickedUp()" 
-                                class="w-full p-4 bg-blue-100 text-blue-700 font-bold rounded-xl hover:bg-blue-200 mb-4">
-                            📦 Pickup Order from Restaurant
-                        </button>
-                        <p class="text-sm text-gray-600 text-center">
-                            Customer will be notified that order is on the way
-                        </p>
-                    </div>
-
-                    <!-- Delivery Confirmation -->
-                    <div id="delivery-section" class="mb-8">
-                        <h3 class="font-bold mb-4">✅ Mark as Delivered</h3>
-                        <div class="space-y-3">
-                            <input type="text" id="customer-otp" 
-                                   placeholder="Enter OTP from customer" 
-                                   class="w-full p-4 border-2 border-gray-300 rounded-xl">
-                            <button onclick="markAsDelivered()" 
-                                    class="w-full p-4 bg-green-500 text-white font-bold rounded-xl hover:bg-green-600">
-                                ✅ Confirm Delivery with OTP
-                            </button>
-                        </div>
-                        <p class="text-sm text-gray-600 text-center mt-4">
-                            Ask customer for OTP shown on their tracking page
-                        </p>
-                    </div>
-
-                    <!-- Customer Info -->
-                    <div class="border-t pt-6">
-                        <h3 class="font-bold mb-4">👤 Customer Details</h3>
-                        <div id="customer-info" class="space-y-2">
-                            <!-- Customer info will load here -->
-                        </div>
-                        <button id="call-customer" 
-                                class="w-full mt-4 p-3 bg-green-100 text-green-700 rounded-lg hover:bg-green-200">
-                            📞 Call Customer
-                        </button>
-                    </div>
-                </div>
-            </div>
-        </div>
-
-        <!-- Delivery History -->
-        <div class="mt-8 bg-white rounded-2xl shadow-lg p-6">
-            <h2 class="text-xl font-bold mb-6">📋 Today's Deliveries</h2>
-            <div id="delivery-history" class="space-y-3">
-                <!-- History will load here -->
-            </div>
-        </div>
-    </div>
-
-    <!-- Pickup Modal -->
-    <div id="pickup-modal" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center hidden z-50">
-        <div class="bg-white rounded-2xl p-8 max-w-md w-full mx-4">
-            <h3 class="text-2xl font-bold mb-6">✅ Confirm Pickup</h3>
-            
-            <div class="mb-6">
-                <p class="text-gray-600 mb-4">You are picking up order from:</p>
-                <div class="p-4 bg-blue-50 rounded-xl">
-                    <p class="font-bold">EasyGo Restaurant</p>
-                    <p class="text-sm text-gray-600">Prime Square, Omaxe City 1, Indore</p>
-                </div>
-            </div>
-            
-            <div class="flex gap-4">
-                <button onclick="confirmPickup()" 
-                        class="flex-1 py-3 bg-green-500 text-white font-bold rounded-xl hover:bg-green-600">
-                    ✅ Confirm Pickup
-                </button>
-                <button onclick="closePickupModal()" 
-                        class="flex-1 py-3 bg-gray-300 text-gray-700 rounded-xl hover:bg-gray-400">
-                    Cancel
-                </button>
-            </div>
-        </div>
-    </div>
-
-
-    <!-- Footer -->
-    <footer class="bg-gray-900 text-white py-8">
-        <div class="max-w-6xl mx-auto px-4">
-            <div class="flex flex-col md:flex-row justify-between items-center">
-                <div class="mb-6 md:mb-0">
-                    <div class="flex items-center">
-                        <img src="https://raw.githubusercontent.com/Clean-Scripts/EasyGo-Expense-Tracker/refs/heads/main/logo.png" 
-                             class="h-12 w-12 rounded-full bg-white p-1 mr-3">
-                        <div>
-                            <h2 class="text-xl font-bold">Easy Go</h2>
-                            <p class="text-gray-400 text-sm">Delivering Freshness & Speed !</p>
-                        </div>
-                    </div>
-                </div>
-                
-                <div class="text-center md:text-right">
-                    <p class="text-gray-400 text-sm mb-2">
-                        © 2024 Easy Go | All Rights Reserved
-                    </p>
-                    <div class="mt-4">
-                        <a href="https://clean-scripts.github.io/Easygo-Menu/" class="text-gray-400 hover:text-white text-sm mr-4">View Menu</a>
-                        <a href="https://clean-scripts.github.io/Easygo-Privacy/" class="text-gray-400 hover:text-white text-sm mr-4">Privacy Policy</a>
-                        <a href="https://clean-scripts.github.io/Easygo-Terms/" class="text-gray-400 hover:text-white text-sm">Terms & Conditions</a>
-                    </div>
-                </div>
-            </div>
-        </div>
-    </footer>
-
+    <title>EasyGo | Rider</title>
+    
+    <!-- Firebase SDK -->
+    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-database-compat.js"></script>
+    
+    <!-- Your existing HTML structure -->
+    
     <script>
-        // Delivery PIN (Change this in production)
-        const DELIVERY_PIN = "3732";
-        let currentOrder = null;
-        let map;
-        let restaurantMarker;
-        let customerMarker;
-        let deliveryRoute;
-
-        // Load delivery orders from localStorage
-        function loadDeliveryOrders() {
-            const orders = JSON.parse(localStorage.getItem('easygo-active-orders')) || [];
-            const pickupContainer = document.getElementById('pickup-orders');
-            const deliveryContainer = document.getElementById('delivery-orders');
-            
-            // Filter orders
-            const pickupOrders = orders.filter(order => 
-                order.status === 'ready-for-pickup' || order.status === 'preparing'
-            );
-            
-            const deliveryOrders = orders.filter(order => 
-                order.status === 'out-for-delivery'
-            );
-            
-            // Render pickup orders
-            if (pickupOrders.length === 0) {
-                pickupContainer.innerHTML = `
-                    <div class="text-center py-8 text-gray-500">
-                        <div class="text-4xl mb-4">📭</div>
-                        <p>No orders ready for pickup</p>
-                    </div>
-                `;
-            } else {
-                let html = '';
-                pickupOrders.forEach(order => {
-                    html += `
-                        <div class="order-card status-ready p-4 rounded-xl cursor-pointer"
-                             onclick="selectOrder('${order.orderId}')">
-                            <div class="flex justify-between items-center">
-                                <div>
-                                    <p class="font-bold">Order #${order.orderId}</p>
-                                    <p class="text-sm">${order.customerName}</p>
-                                </div>
-                                <div class="text-right">
-                                    <p class="font-bold">₹${order.totalAmount}</p>
-                                    <p class="text-sm ${order.deliveryMode === 'takeaway' ? 'text-green-600' : 'text-blue-600'}">
-                                        ${order.deliveryMode === 'takeaway' ? 'Takeaway' : 'Delivery'}
-                                    </p>
-                                </div>
-                            </div>
-                            <div class="mt-2 text-sm">
-                                <p>📞 ${order.customerPhone}</p>
-                                <p>🕐 ${new Date(order.timestamp).toLocaleTimeString()}</p>
-                            </div>
-                        </div>
-                    `;
+        // Firebase Configuration
+        const firebaseConfig = {
+            apiKey: "AIzaSyCU_wJYBTwEwMZQ-iTYOjUZuEHEphA0DXc",
+            authDomain: "easygo-10f4b.firebaseapp.com",
+            projectId: "easygo-10f4b",
+            storageBucket: "easygo-10f4b.firebasestorage.app",
+            messagingSenderId: "197660067542",
+            appId: "1:197660067542:web:6c616efb479b122f1f6b77",
+            databaseURL: "https://easygo-10f4b-default-rtdb.asia-southeast1.firebasedatabase.app/"
+        };
+        
+        let database;
+        let isFirebaseConnected = false;
+        
+        function initializeFirebase() {
+            try {
+                const app = firebase.initializeApp(firebaseConfig);
+                database = firebase.database();
+                
+                const connectedRef = database.ref(".info/connected");
+                connectedRef.on("value", function(snap) {
+                    isFirebaseConnected = snap.val() === true;
                 });
-                pickupContainer.innerHTML = html;
+            } catch (error) {
+                console.error("Firebase error:", error);
             }
+        }
+        
+        // Get available orders for rider
+        async function getAvailableOrders() {
+            if (!isFirebaseConnected) return [];
             
-            // Render delivery orders
-            if (deliveryOrders.length === 0) {
-                deliveryContainer.innerHTML = `
-                    <div class="text-center py-8 text-gray-500">
-                        <div class="text-4xl mb-4">🛵</div>
-                        <p>No active deliveries</p>
-                    </div>
-                `;
-            } else {
-                let html = '';
-                deliveryOrders.forEach(order => {
-                    html += `
-                        <div class="order-card status-picked p-4 rounded-xl cursor-pointer"
-                             onclick="selectOrder('${order.orderId}')">
-                            <div class="flex justify-between items-center">
-                                <div>
-                                    <p class="font-bold">Order #${order.orderId}</p>
-                                    <p class="text-sm">${order.customerName}</p>
-                                </div>
-                                <div class="text-right">
-                                    <p class="font-bold">₹${order.totalAmount}</p>
-                                    <p class="text-sm text-purple-600">On the way</p>
-                                </div>
-                            </div>
-                            <div class="mt-2 text-sm">
-                                <p>📍 ${order.address.substring(0, 40)}...</p>
-                                <p>🕐 Picked up: ${new Date(order.pickedUpAt || order.timestamp).toLocaleTimeString()}</p>
-                            </div>
-                        </div>
-                    `;
+            try {
+                const snapshot = await database.ref('orders')
+                    .orderByChild('status')
+                    .equalTo('ready-for-pickup')
+                    .once('value');
+                
+                return snapshot.val() ? Object.entries(snapshot.val()).map(([id, data]) => ({ id, ...data })) : [];
+            } catch (error) {
+                console.error("Error getting orders:", error);
+                return [];
+            }
+        }
+        
+        // Rider accepts order
+        async function acceptOrder(orderId, riderInfo) {
+            if (!isFirebaseConnected) return false;
+            
+            try {
+                await database.ref(`orders/${orderId}`).update({
+                    status: 'accepted',
+                    riderId: riderInfo.id,
+                    riderName: riderInfo.name,
+                    riderPhone: riderInfo.phone,
+                    acceptedAt: Date.now()
                 });
-                deliveryContainer.innerHTML = html;
-            }
-            
-            // Load first order if exists
-            if (pickupOrders.length > 0) {
-                selectOrder(pickupOrders[0].orderId);
-            } else if (deliveryOrders.length > 0) {
-                selectOrder(deliveryOrders[0].orderId);
+                return true;
+            } catch (error) {
+                console.error("Error accepting order:", error);
+                return false;
             }
         }
         
-        function selectOrder(orderId) {
-            const orders = JSON.parse(localStorage.getItem('easygo-active-orders')) || [];
-            currentOrder = orders.find(order => order.orderId === orderId);
+        // Update delivery status
+        async function updateDeliveryStatus(orderId, status, updateData = {}) {
+            if (!isFirebaseConnected) return false;
             
-            if (currentOrder) {
-                // Update UI to show selected order
-                document.querySelectorAll('.order-card').forEach(card => {
-                    card.classList.remove('ring-2', 'ring-green-500');
+            try {
+                await database.ref(`orders/${orderId}`).update({
+                    status: status,
+                    deliveryUpdatedAt: Date.now(),
+                    ...updateData
                 });
-                
-                // Find and highlight the clicked card
-                const cards = document.querySelectorAll('.order-card');
-                for (let card of cards) {
-                    if (card.textContent.includes(orderId)) {
-                        card.classList.add('ring-2', 'ring-green-500');
-                        break;
-                    }
-                }
-                
-                // Show order details section
-                document.getElementById('order-details-section').classList.remove('hidden');
-                
-                // Load order details
-                loadOrderDetails(currentOrder);
-                
-                // Initialize map
-                initMap(currentOrder);
+                return true;
+            } catch (error) {
+                console.error("Error updating delivery:", error);
+                return false;
             }
         }
         
-        function loadOrderDetails(order) {
-            const container = document.getElementById('selected-order-details');
-            const customerContainer = document.getElementById('customer-info');
+        // Real-time order listener for rider
+        function setupRiderOrderListener(riderId) {
+            if (!isFirebaseConnected) return;
             
-            // Order items
-            let itemsHtml = '';
-            order.items.forEach(item => {
-                itemsHtml += `
-                    <div class="flex justify-between items-center p-3 bg-gray-50 rounded-lg">
-                        <div>
-                            <p class="font-medium">${item.name}</p>
-                            <p class="text-sm text-gray-600">Quantity: ${item.quantity}</p>
-                        </div>
-                        <span class="font-bold">₹${item.price}</span>
-                    </div>
-                `;
-            });
-            
-            // Order details
-            container.innerHTML = `
-                <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <div>
-                        <h3 class="font-bold mb-2">Order Information</h3>
-                        <div class="space-y-2">
-                            <p><strong>Order ID:</strong> ${order.orderId}</p>
-                            <p><strong>Status:</strong> <span class="font-bold ${getStatusColor(order.status)}">${order.status.toUpperCase()}</span></p>
-                            <p><strong>Total Amount:</strong> ₹${order.totalAmount}</p>
-                            <p><strong>Order Type:</strong> ${order.deliveryMode === 'takeaway' ? 'Takeaway' : 'Home Delivery'}</p>
-                        </div>
-                    </div>
-                    <div>
-                        <h3 class="font-bold mb-2">Items</h3>
-                        ${itemsHtml}
-                    </div>
-                </div>
-            `;
-            
-            // Customer info for delivery
-            if (order.deliveryMode === 'delivery') {
-                customerContainer.innerHTML = `
-                    <p><strong>Name:</strong> ${order.customerName}</p>
-                    <p><strong>Phone:</strong> ${order.customerPhone}</p>
-                    <p><strong>Address:</strong> ${order.address}</p>
-                    <p><strong>Delivery OTP:</strong> ${order.otp}</p>
-                `;
-                
-                // Show/hide sections based on status
-                if (order.status === 'ready-for-pickup' || order.status === 'preparing') {
-                    document.getElementById('pickup-section').classList.remove('hidden');
-                    document.getElementById('delivery-section').classList.add('hidden');
-                } else if (order.status === 'out-for-delivery') {
-                    document.getElementById('pickup-section').classList.add('hidden');
-                    document.getElementById('delivery-section').classList.remove('hidden');
-                }
-            } else {
-                // Takeaway order
-                customerContainer.innerHTML = `
-                    <p><strong>Name:</strong> ${order.customerName}</p>
-                    <p><strong>Phone:</strong> ${order.customerPhone}</p>
-                    <p><strong>Pickup OTP:</strong> ${order.otp}</p>
-                    <p class="text-sm text-gray-600">Customer will come to restaurant to pickup</p>
-                `;
-                
-                // For takeaway, only show pickup section
-                document.getElementById('pickup-section').classList.remove('hidden');
-                document.getElementById('delivery-section').classList.add('hidden');
-            }
-            
-            // Update call button
-            document.getElementById('call-customer').onclick = function() {
-                window.open(`tel:${order.customerPhone}`, '_blank');
-            };
+            // Listen for orders assigned to this rider
+            database.ref('orders')
+                .orderByChild('riderId')
+                .equalTo(riderId)
+                .on('value', function(snapshot) {
+                    const orders = snapshot.val() ? Object.entries(snapshot.val()).map(([id, data]) => ({ id, ...data })) : [];
+                    // Update rider UI
+                    updateRiderOrders(orders);
+                });
         }
         
-        function getStatusColor(status) {
-            const colors = {
-                'pending': 'text-yellow-600',
-                'preparing': 'text-blue-600',
-                'ready-for-pickup': 'text-orange-600',
-                'out-for-delivery': 'text-purple-600',
-                'delivered': 'text-green-600',
-                'cancelled': 'text-red-600'
-            };
-            return colors[status] || 'text-gray-600';
-        }
-        
-        function initMap(order) {
-            if (!map) {
-                map = L.map('map').setView([22.7767737, 75.9605483], 13);
+        // Initialize on page load
+        document.addEventListener('DOMContentLoaded', function() {
+            initializeFirebase();
+            
+            // After rider login
+            function loginDelivery() {
+                // Your existing login logic
+                const riderInfo = {
+                    id: 'rider_' + Date.now(),
+                    name: document.getElementById('delivery-partner-name').textContent,
+                    phone: 'rider_phone' // Get from input
+                };
                 
-                L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-                    attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
-                }).addTo(map);
-            }
-            
-            // Clear existing markers and route
-            if (restaurantMarker) map.removeLayer(restaurantMarker);
-            if (customerMarker) map.removeLayer(customerMarker);
-            if (deliveryRoute) map.removeLayer(deliveryRoute);
-            
-            // Restaurant marker
-            const restaurantLocation = [22.7767737, 75.9605483]; // Prime Square
-            restaurantMarker = L.marker(restaurantLocation).addTo(map)
-                .bindPopup('<b>EasyGo Restaurant</b><br>📍 Prime Square, Omaxe City 1')
-                .openPopup();
-            
-            // Add route for delivery orders
-            if (order.deliveryMode === 'delivery' && order.locationLink) {
-                try {
-                    // Extract coordinates from location link
-                    const urlParams = new URL(order.locationLink).searchParams;
-                    const coords = urlParams.get('q').split(',');
-                    const customerLocation = [parseFloat(coords[0]), parseFloat(coords[1])];
-                    
-                    // Customer marker
-                    customerMarker = L.marker(customerLocation).addTo(map)
-                        .bindPopup('<b>Customer Location</b>')
-                        .openPopup();
-                    
-                    // Add route line
-                    deliveryRoute = L.polyline([restaurantLocation, customerLocation], {
-                        color: 'blue',
-                        weight: 3,
-                        opacity: 0.7,
-                        dashArray: '10, 10'
-                    }).addTo(map);
-                    
-                    // Fit bounds to show both markers
-                    map.fitBounds([restaurantLocation, customerLocation]);
-                    
-                    // Update navigation buttons
-                    document.getElementById('navigate-customer').onclick = function() {
-                        window.open(`https://www.google.com/maps/dir/?api=1&destination=${customerLocation[0]},${customerLocation[1]}`, '_blank');
-                    };
-                } catch (e) {
-                    console.error('Error parsing location:', e);
+                // Setup Firebase listeners
+                if (isFirebaseConnected) {
+                    setupRiderOrderListener(riderInfo.id);
+                    loadAvailableOrders();
                 }
             }
             
-            // Navigation to restaurant button
-            document.getElementById('navigate-restaurant').onclick = function() {
-                window.open('https://www.google.com/maps/dir/?api=1&destination=22.7767737,75.9605483', '_blank');
-            };
-        }
-        
-        function markAsPickedUp() {
-            if (!currentOrder) return;
-            
-            // Show pickup confirmation modal
-            document.getElementById('pickup-modal').classList.remove('hidden');
-        }
-        
-        function confirmPickup() {
-            if (!currentOrder) return;
-            
-            // Update order status
-            currentOrder.status = 'out-for-delivery';
-            currentOrder.pickedUpAt = new Date().toISOString();
-            
-            // Update localStorage
-            const orders = JSON.parse(localStorage.getItem('easygo-active-orders')) || [];
-            const index = orders.findIndex(o => o.orderId === currentOrder.orderId);
-            if (index > -1) {
-                orders[index] = currentOrder;
-                localStorage.setItem('easygo-active-orders', JSON.stringify(orders));
+            // Load available orders
+            async function loadAvailableOrders() {
+                const orders = await getAvailableOrders();
+                // Update your UI
+                renderAvailableOrders(orders);
             }
-            
-            // Send notification to customer
-            sendPickupNotification(currentOrder);
-            
-            // Close modal and reload
-            closePickupModal();
-            loadDeliveryOrders();
-            loadOrderDetails(currentOrder);
-            
-            alert('✅ Order marked as picked up! Customer has been notified.');
-        }
-        
-        function sendPickupNotification(order) {
-            let message = '';
-            
-            if (order.deliveryMode === 'delivery') {
-                message = `🛵 *ORDER ON THE WAY* 🛵%0A%0A` +
-                         `Your EasyGo order is on its way!%0A%0A` +
-                         `*Order ID:* ${order.orderId}%0A` +
-                         `*Delivery Partner:* Rahul%0A` +
-                         `*Phone:* +91 98765 43210%0A` +
-                         `*Estimated Arrival:* 25-30 minutes%0A%0A` +
-                         `Please keep your OTP ready: *${order.otp}*%0A%0A` +
-                         `Thank you for choosing EasyGo!`;
-            } else {
-                message = `🏪 *ORDER READY FOR PICKUP* 🏪%0A%0A` +
-                         `Your EasyGo order is ready for pickup!%0A%0A` +
-                         `*Order ID:* ${order.orderId}%0A` +
-                         `*Pickup OTP:* ${order.otp}%0A` +
-                         `*Pickup Address:* Prime Square, Omaxe City 1, Indore%0A` +
-                         `*Timings:* 6:00 PM - 10:00 PM%0A%0A` +
-                         `Please share this OTP at the counter to collect your order.%0A` +
-                         `Thank you for choosing EasyGo!`;
-            }
-            
-            window.open(`https://wa.me/${order.customerPhone}?text=${message}`, '_blank');
-        }
-        
-        function markAsDelivered() {
-            const otp = document.getElementById('customer-otp').value;
-            
-            if (!otp || otp.length !== 6) {
-                alert('Please enter valid 6-digit OTP from customer');
-                return;
-            }
-            
-            // Verify OTP
-            if (otp !== currentOrder.otp && otp !== '123456') {
-                alert('❌ Invalid OTP. Please check with customer and try again.');
-                return;
-            }
-            
-            // Update order status
-            currentOrder.status = 'delivered';
-            currentOrder.deliveredAt = new Date().toISOString();
-            currentOrder.deliveryPartner = document.getElementById('delivery-partner-name').textContent;
-            
-            // Move to history
-            const activeOrders = JSON.parse(localStorage.getItem('easygo-active-orders')) || [];
-            const history = JSON.parse(localStorage.getItem('easygo-delivery-history')) || [];
-            
-            // Remove from active
-            const updatedActive = activeOrders.filter(o => o.orderId !== currentOrder.orderId);
-            
-            // Add to history
-            history.push(currentOrder);
-            
-            // Save
-            localStorage.setItem('easygo-active-orders', JSON.stringify(updatedActive));
-            localStorage.setItem('easygo-delivery-history', JSON.stringify(history));
-            
-            // Update today's earnings
-            updateEarnings();
-            
-            // Send delivery confirmation
-            sendDeliveryConfirmation(currentOrder);
-            
-            // Reload
-            loadDeliveryOrders();
-            loadDeliveryHistory();
-            
-            alert('✅ Order marked as delivered successfully!');
-        }
-        
-        function sendDeliveryConfirmation(order) {
-            const message = `✅ *ORDER DELIVERED* ✅%0A%0A` +
-                          `Your EasyGo order has been delivered!%0A%0A` +
-                          `*Order ID:* ${order.orderId}%0A` +
-                          `*Amount:* ₹${order.totalAmount}%0A` +
-                          `*Delivery Partner:* ${order.deliveryPartner}%0A` +
-                          `*OTP Verified:* ${order.otp}%0A%0A` +
-                          `📦 *Items:*%0A`;
-            
-            order.items.forEach(item => {
-                message += `• ${item.name} × ${item.quantity}%0A`;
-            });
-            
-            message += `%0A📍 *Delivery Address:*%0A${order.address}%0A%0A` +
-                      `⏰ *Delivered At:* ${new Date().toLocaleTimeString()}%0A%0A` +
-                      `🙏 *Please rate your experience:*%0A` +
-                      `https://www.google.com/maps/place/EasyGo/@22.7767506,75.9581962,17z`;
-            
-            window.open(`https://wa.me/${order.customerPhone}?text=${message}`, '_blank');
-            
-            // Also notify restaurant
-            const restaurantMessage = `✅ *DELIVERY CONFIRMED* ✅%0A%0A` +
-                                    `Order #${order.orderId} has been delivered.%0A%0A` +
-                                    `*Customer:* ${order.customerName}%0A` +
-                                    `*Phone:* ${order.customerPhone}%0A` +
-                                    `*Amount:* ₹${order.totalAmount}%0A` +
-                                    `*Delivery Partner:* ${order.deliveryPartner}%0A` +
-                                    `*OTP Verified:* ${order.otp}%0A` +
-                                    `*Time:* ${new Date().toLocaleTimeString()}`;
-            
-            window.open(`https://wa.me/917651837322?text=${restaurantMessage}`, '_blank');
-        }
-        
-        function updateEarnings() {
-            const history = JSON.parse(localStorage.getItem('easygo-delivery-history')) || [];
-            const today = new Date().toDateString();
-            const todayEarnings = history
-                .filter(order => new Date(order.deliveredAt).toDateString() === today)
-                .reduce((total, order) => {
-                    // Delivery fee calculation (example: 20% of order value)
-                    const deliveryFee = order.totalAmount * 0.2;
-                    return total + deliveryFee;
-                }, 0);
-            
-            document.getElementById('today-earnings').textContent = `₹${todayEarnings.toFixed(2)}`;
-        }
-        
-        function loadDeliveryHistory() {
-            const history = JSON.parse(localStorage.getItem('easygo-delivery-history')) || [];
-            const container = document.getElementById('delivery-history');
-            
-            if (history.length === 0) {
-                container.innerHTML = '<p class="text-gray-500">No deliveries today</p>';
-                return;
-            }
-            
-            const today = new Date().toDateString();
-            const todayHistory = history.filter(order => 
-                new Date(order.deliveredAt || order.timestamp).toDateString() === today
-            );
-            
-            if (todayHistory.length === 0) {
-                container.innerHTML = '<p class="text-gray-500">No deliveries today</p>';
-                return;
-            }
-            
-            let html = '';
-            todayHistory.reverse().forEach(order => {
-                html += `
-                    <div class="flex justify-between items-center p-3 bg-gray-50 rounded-lg">
-                        <div>
-                            <p class="font-medium">${order.customerName}</p>
-                            <p class="text-sm text-gray-600">${new Date(order.deliveredAt).toLocaleTimeString()}</p>
-                        </div>
-                        <div class="text-right">
-                            <p class="font-bold">₹${order.totalAmount}</p>
-                            <p class="text-sm text-green-600">✅ Delivered</p>
-                        </div>
-                    </div>
-                `;
-            });
-            
-            container.innerHTML = html;
-        }
-        
-        function closePickupModal() {
-            document.getElementById('pickup-modal').classList.add('hidden');
-        }
-        
-        function loginDelivery() {
-            const pin = document.getElementById('delivery-pin').value;
-            if (pin === DELIVERY_PIN) {
-                document.getElementById('login-section').classList.add('hidden');
-                document.getElementById('dashboard-section').classList.remove('hidden');
-                
-                // Set delivery partner name
-                const name = prompt('Enter your name:', 'Rahul');
-                document.getElementById('delivery-partner-name').textContent = name || 'Delivery Partner';
-                
-                // Load data
-                loadDeliveryOrders();
-                updateEarnings();
-                loadDeliveryHistory();
-                
-                // Update time
-                setInterval(() => {
-                    document.getElementById('current-time').textContent = new Date().toLocaleTimeString();
-                }, 1000);
-                
-                // Auto-refresh every 10 seconds
-                setInterval(loadDeliveryOrders, 10000);
-            } else {
-                alert('Invalid PIN');
-            }
-        }
-        
-        function logoutDelivery() {
-            document.getElementById('login-section').classList.remove('hidden');
-            document.getElementById('dashboard-section').classList.add('hidden');
-            document.getElementById('delivery-pin').value = '';
-        }
-        
-        // Initialize
-        window.addEventListener('DOMContentLoaded', () => {
-            updateTime();
         });
-        
-        function updateTime() {
-            const timeElement = document.getElementById('current-time');
-            if (timeElement) {
-                timeElement.textContent = new Date().toLocaleTimeString();
-            }
-        }
     </script>
 </body>
 </html>
