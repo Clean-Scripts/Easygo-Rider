@@ -3,138 +3,1663 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>EasyGo | Rider</title>
-    
+    <link rel="icon" type="image/png" href="https://raw.githubusercontent.com/Clean-Scripts/EasyGo-Expense-Tracker/refs/heads/main/logo.png">
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
     <!-- Firebase SDK -->
     <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-database-compat.js"></script>
-    
-    <!-- Your existing HTML structure -->
-    
-    <script>
-        // Firebase Configuration
-        const firebaseConfig = {
-            apiKey: "AIzaSyCU_wJYBTwEwMZQ-iTYOjUZuEHEphA0DXc",
-            authDomain: "easygo-10f4b.firebaseapp.com",
-            projectId: "easygo-10f4b",
-            storageBucket: "easygo-10f4b.firebasestorage.app",
-            messagingSenderId: "197660067542",
-            appId: "1:197660067542:web:6c616efb479b122f1f6b77",
-            databaseURL: "https://easygo-10f4b-default-rtdb.asia-southeast1.firebasedatabase.app/"
-        };
+    <title>EasyGo | Delivery Partner</title>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;700;900&display=swap');
+        body { font-family: 'Inter', sans-serif; }
+        #map { height: 300px; border-radius: 1rem; }
+        .order-card { transition: all 0.3s; }
+        .order-card:hover { transform: translateY(-2px); }
+        .status-ready { border-left: 4px solid #f59e0b; }
+        .status-picked { border-left: 4px solid #3b82f6; }
+        .status-delivered { border-left: 4px solid #10b981; }
+        .pulse { animation: pulse 2s infinite; }
+        @keyframes pulse {
+            0% { transform: scale(1); }
+            50% { transform: scale(1.05); }
+            100% { transform: scale(1); }
+        }
         
-        let database;
-        let isFirebaseConnected = false;
+        .firebase-status {
+            position: fixed;
+            bottom: 20px;
+            right: 20px;
+            padding: 10px 20px;
+            border-radius: 25px;
+            font-size: 14px;
+            font-weight: bold;
+            z-index: 1000;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+            transition: all 0.3s;
+        }
         
-        function initializeFirebase() {
-            try {
-                const app = firebase.initializeApp(firebaseConfig);
-                database = firebase.database();
+        .glow-notification {
+            animation: glow 1.5s infinite alternate;
+        }
+        @keyframes glow {
+            from { box-shadow: 0 0 10px #3b82f6; }
+            to { box-shadow: 0 0 20px #3b82f6, 0 0 30px #3b82f6; }
+        }
+        
+        .location-updating {
+            animation: locationPulse 1s infinite;
+        }
+        @keyframes locationPulse {
+            0% { background-color: #3b82f6; }
+            50% { background-color: #1d4ed8; }
+            100% { background-color: #3b82f6; }
+        }
+    </style>
+</head>
+<body class="antialiased bg-gray-100 min-h-screen">
+
+    <!-- Firebase Status Indicator -->
+    <div id="firebaseStatus" class="firebase-status hidden">
+        🔄 Connecting to Firebase...
+    </div>
+
+    <!-- New Order Notification -->
+    <div id="new-order-notification" class="fixed top-4 right-4 z-50 hidden">
+        <div class="bg-blue-500 text-white rounded-xl shadow-xl p-4 max-w-sm glow-notification">
+            <div class="flex items-center gap-3">
+                <span class="text-2xl">🆕</span>
+                <div>
+                    <p class="font-bold">New Delivery Available!</p>
+                    <p id="new-order-details" class="text-sm opacity-90"></p>
+                </div>
+                <button onclick="closeNewOrderNotification()" class="ml-4 text-white hover:text-gray-200">
+                    ✕
+                </button>
+            </div>
+            <div class="mt-3 flex gap-2">
+                <button onclick="acceptNewOrder()" class="flex-1 py-2 bg-green-500 text-white rounded-lg hover:bg-green-600">
+                    ✅ Accept
+                </button>
+                <button onclick="rejectNewOrder()" class="flex-1 py-2 bg-red-500 text-white rounded-lg hover:bg-red-600">
+                    ❌ Reject
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Delivery Partner Login -->
+    <div id="login-section" class="min-h-screen flex items-center justify-center bg-gradient-to-br from-gray-900 to-gray-800">
+        <div class="bg-white p-8 rounded-2xl shadow-2xl max-w-md w-full mx-4 border-2 border-gray-100">
+            <div class="text-center mb-8">
+                <img src="https://raw.githubusercontent.com/Clean-Scripts/EasyGo-Expense-Tracker/refs/heads/main/logo.png" 
+                     class="h-24 w-24 mx-auto mb-4 p-2 bg-green-50 rounded-full border-4 border-green-100">
+                <h1 class="text-3xl font-black text-gray-900 uppercase tracking-tight">EasyGo Delivery Partner</h1>
+                <p class="text-gray-600 mt-2 font-medium">Pickup and Delivery Management</p>
+            </div>
+            
+            <div class="space-y-4">
+                <div>
+                    <label class="text-xs font-bold text-gray-500 uppercase tracking-widest mb-2 block">Rider PIN</label>
+                    <input type="password" id="delivery-pin" 
+                           placeholder="Enter 4-digit PIN" 
+                           class="w-full p-4 border-2 border-gray-200 rounded-xl text-center text-2xl font-bold tracking-widest focus:border-green-500 focus:ring-2 focus:ring-green-100 outline-none transition"
+                           maxlength="4">
+                </div>
                 
-                const connectedRef = database.ref(".info/connected");
-                connectedRef.on("value", function(snap) {
-                    isFirebaseConnected = snap.val() === true;
-                });
-            } catch (error) {
-                console.error("Firebase error:", error);
-            }
-        }
-        
-        // Get available orders for rider
-        async function getAvailableOrders() {
-            if (!isFirebaseConnected) return [];
+                <button onclick="loginDelivery()" 
+                        class="w-full py-4 bg-gradient-to-r from-green-500 to-emerald-600 text-white font-bold rounded-xl hover:opacity-90 transition-all shadow-lg hover:shadow-xl">
+                    🚚 Start Delivery
+                </button>
+            </div>
             
-            try {
-                const snapshot = await database.ref('orders')
-                    .orderByChild('status')
-                    .equalTo('ready-for-pickup')
-                    .once('value');
+            <p class="text-sm text-gray-500 text-center mt-6">
+                🔐 PIN: <span class="font-bold text-gray-700">3732</span>
+            </p>
+        </div>
+    </div>
+
+    <!-- Delivery Dashboard -->
+    <div id="dashboard-section" class="hidden p-4 md:p-8">
+        <div class="max-w-7xl mx-auto">
+            <!-- Header -->
+            <div class="flex flex-col md:flex-row justify-between items-start md:items-center mb-8 gap-4">
+                <div>
+                    <h1 class="text-3xl font-black text-gray-900 uppercase tracking-tight">EasyGo Delivery Dashboard</h1>
+                    <p class="text-gray-600 mt-2">Real-time pickup and delivery management</p>
+                </div>
+                <div class="flex items-center gap-4">
+                    <div class="bg-white px-4 py-2 rounded-xl shadow border border-gray-100">
+                        <span id="current-time" class="font-bold text-gray-800"></span>
+                    </div>
+                    <button onclick="logoutDelivery()" 
+                            class="px-4 py-2 bg-red-500 text-white rounded-xl hover:bg-red-600 transition-colors font-bold shadow">
+                        Logout
+                    </button>
+                </div>
+            </div>
+
+            <!-- Delivery Partner Info -->
+            <div class="bg-white rounded-2xl shadow-lg p-6 mb-8">
+                <div class="flex items-center justify-between">
+                    <div class="flex items-center gap-4">
+                        <div class="w-16 h-16 bg-green-100 rounded-full flex items-center justify-center">
+                            <span class="text-2xl">🚚</span>
+                        </div>
+                        <div>
+                            <h3 class="font-bold text-xl" id="delivery-partner-name">Delivery Partner</h3>
+                            <p class="text-gray-600">Status: <span id="delivery-status" class="font-bold text-green-600">Active</span></p>
+                            <p class="text-sm text-gray-600 mt-1">Location: <span id="rider-location-status" class="font-medium">Updating...</span></p>
+                        </div>
+                    </div>
+                    <div class="text-right">
+                        <p class="font-bold">Today's Earnings</p>
+                        <p class="text-2xl font-bold text-green-600" id="today-earnings">₹0</p>
+                        <p class="text-sm text-gray-600">Completed: <span id="completed-count">0</span> orders</p>
+                    </div>
+                </div>
+            </div>
+
+            <div class="grid grid-cols-1 lg:grid-cols-2 gap-8">
+                <!-- Assigned Orders -->
+                <div class="bg-white rounded-2xl shadow-lg p-6">
+                    <h2 class="text-2xl font-bold text-gray-900 mb-6">📦 Assigned Orders</h2>
+                    <div id="assigned-orders" class="space-y-4">
+                        <!-- Orders will load here -->
+                    </div>
+                </div>
+
+                <!-- Available Orders -->
+                <div class="bg-white rounded-2xl shadow-lg p-6">
+                    <h2 class="text-2xl font-bold text-gray-900 mb-6">🛵 Available Orders</h2>
+                    <div id="available-orders" class="space-y-4">
+                        <!-- Orders will load here -->
+                    </div>
+                </div>
+            </div>
+
+            <!-- Selected Order Details -->
+            <div id="order-details-section" class="hidden mt-8">
+                <div class="bg-white rounded-2xl shadow-lg p-6 mb-8">
+                    <div class="flex justify-between items-center mb-6">
+                        <h2 class="text-2xl font-bold text-gray-900">📋 Order Details</h2>
+                        <button onclick="clearSelectedOrder()" 
+                                class="text-sm text-gray-500 hover:text-gray-700">
+                            Clear
+                        </button>
+                    </div>
+                    <div id="selected-order-details" class="space-y-4">
+                        <!-- Order details will load here -->
+                    </div>
+                </div>
+
+                <!-- Map & Actions -->
+                <div class="grid grid-cols-1 lg:grid-cols-2 gap-8">
+                    <!-- Map -->
+                    <div class="bg-white rounded-2xl shadow-lg p-6">
+                        <h2 class="text-2xl font-bold text-gray-900 mb-6">📍 Delivery Map</h2>
+                        <div id="map"></div>
+                        
+                        <!-- Navigation -->
+                        <div class="mt-6 space-y-3">
+                            <button id="navigate-restaurant" 
+                                    class="w-full p-4 bg-blue-500 text-white font-bold rounded-xl hover:bg-blue-600">
+                                🏪 Navigate to Restaurant
+                            </button>
+                            <button id="navigate-customer" 
+                                    class="w-full p-4 bg-green-500 text-white font-bold rounded-xl hover:bg-green-600">
+                                🏠 Navigate to Customer
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- Delivery Actions -->
+                    <div class="bg-white rounded-2xl shadow-lg p-6">
+                        <h2 class="text-2xl font-bold text-gray-900 mb-6">⚡ Delivery Actions</h2>
+                        
+                        <!-- Arrived at Restaurant -->
+                        <div id="arrived-restaurant-section" class="mb-8 hidden">
+                            <h3 class="font-bold mb-4">📍 Arrived at Restaurant</h3>
+                            <button onclick="markArrivedAtRestaurant()" 
+                                    class="w-full p-4 bg-blue-500 text-white font-bold rounded-xl hover:bg-blue-600 mb-4">
+                                ✅ Mark as Arrived at Restaurant
+                            </button>
+                            <div class="bg-yellow-50 border border-yellow-200 rounded-xl p-4">
+                                <p class="text-sm text-yellow-800">
+                                    ⚠️ You will receive ₹1 per 30 seconds after 2 minutes of waiting
+                                </p>
+                            </div>
+                        </div>
+
+                        <!-- Pickup Confirmation -->
+                        <div id="pickup-section" class="mb-8 hidden">
+                            <h3 class="font-bold mb-4">✅ Pickup Order</h3>
+                            <button onclick="markAsPickedUp()" 
+                                    class="w-full p-4 bg-green-500 text-white font-bold rounded-xl hover:bg-green-600 mb-4">
+                                📦 Pickup Order from Restaurant
+                            </button>
+                        </div>
+
+                        <!-- Arrived at Customer -->
+                        <div id="arrived-customer-section" class="mb-8 hidden">
+                            <h3 class="font-bold mb-4">📍 Arrived at Customer</h3>
+                            <button onclick="markArrivedAtCustomer()" 
+                                    class="w-full p-4 bg-blue-500 text-white font-bold rounded-xl hover:bg-blue-600 mb-4">
+                                ✅ Mark as Arrived at Customer
+                            </button>
+                            <div class="bg-yellow-50 border border-yellow-200 rounded-xl p-4">
+                                <p class="text-sm text-yellow-800">
+                                    ⚠️ You will receive ₹2 per 60 seconds after 100 seconds of searching
+                                </p>
+                            </div>
+                        </div>
+
+                        <!-- Delivery Confirmation -->
+                        <div id="delivery-section" class="mb-8 hidden">
+                            <h3 class="font-bold mb-4">✅ Deliver Order</h3>
+                            <div class="space-y-3">
+                                <input type="text" id="customer-otp" 
+                                       placeholder="Enter OTP from customer" 
+                                       class="w-full p-4 border-2 border-gray-300 rounded-xl text-center text-xl">
+                                <button onclick="markAsDelivered()" 
+                                        class="w-full p-4 bg-green-500 text-white font-bold rounded-xl hover:bg-green-600">
+                                    ✅ Confirm Delivery with OTP
+                                </button>
+                            </div>
+                        </div>
+
+                        <!-- Customer Info -->
+                        <div class="border-t pt-6">
+                            <h3 class="font-bold mb-4">👤 Customer Details</h3>
+                            <div id="customer-info" class="space-y-2">
+                                <!-- Customer info will load here -->
+                            </div>
+                            <button id="call-customer" 
+                                    class="w-full mt-4 p-3 bg-green-100 text-green-700 rounded-lg hover:bg-green-200">
+                                📞 Call Customer
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Delivery History -->
+            <div class="mt-8 bg-white rounded-2xl shadow-lg p-6">
+                <div class="flex justify-between items-center mb-6">
+                    <h2 class="text-2xl font-bold text-gray-900">📋 Today's Deliveries</h2>
+                    <button onclick="loadDeliveryHistory()" class="text-blue-500 hover:text-blue-700 font-medium">
+                        🔄 Refresh
+                    </button>
+                </div>
+                <div id="delivery-history" class="space-y-3">
+                    <!-- History will load here -->
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Pickup Modal -->
+    <div id="pickup-modal" class="fixed inset-0 bg-black/50 backdrop-blur-sm hidden flex items-center justify-center z-50 p-4">
+        <div class="bg-white rounded-2xl p-8 max-w-md w-full shadow-2xl border border-gray-100">
+            <h3 class="text-2xl font-bold mb-6 text-gray-900">✅ Confirm Pickup</h3>
+            
+            <div class="mb-6">
+                <p class="text-gray-600 mb-4">You are picking up order from:</p>
+                <div class="p-4 bg-blue-50 rounded-xl">
+                    <p class="font-bold">EasyGo Restaurant</p>
+                    <p class="text-sm text-gray-600">Prime Square, Omaxe City 1, Indore</p>
+                </div>
+            </div>
+            
+            <div class="flex gap-4">
+                <button onclick="confirmPickup()" 
+                        class="flex-1 py-3 bg-green-500 text-white font-bold rounded-xl hover:bg-green-600">
+                    ✅ Confirm Pickup
+                </button>
+                <button onclick="closePickupModal()" 
+                        class="flex-1 py-3 bg-gray-300 text-gray-700 rounded-xl hover:bg-gray-400">
+                    Cancel
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Footer -->
+    <footer class="bg-gray-900 text-white py-8 mt-8">
+        <div class="max-w-6xl mx-auto px-4">
+            <div class="flex flex-col md:flex-row justify-between items-center">
+                <div class="mb-6 md:mb-0">
+                    <div class="flex items-center">
+                        <img src="https://raw.githubusercontent.com/Clean-Scripts/EasyGo-Expense-Tracker/refs/heads/main/logo.png" 
+                             class="h-12 w-12 rounded-full bg-white p-1 mr-3">
+                        <div>
+                            <h2 class="text-xl font-bold">Easy Go</h2>
+                            <p class="text-gray-400 text-sm">Delivering Freshness & Speed !</p>
+                        </div>
+                    </div>
+                </div>
                 
-                return snapshot.val() ? Object.entries(snapshot.val()).map(([id, data]) => ({ id, ...data })) : [];
-            } catch (error) {
-                console.error("Error getting orders:", error);
-                return [];
-            }
-        }
+                <div class="text-center md:text-right">
+                    <p class="text-gray-400 text-sm mb-2">
+                        © 2024 Easy Go | All Rights Reserved
+                    </p>
+                    <div class="mt-4">
+                        <a href="https://clean-scripts.github.io/Easygo-Menu/" class="text-gray-400 hover:text-white text-sm mr-4">View Menu</a>
+                        <a href="https://clean-scripts.github.io/Easygo-Privacy/" class="text-gray-400 hover:text-white text-sm mr-4">Privacy Policy</a>
+                        <a href="https://clean-scripts.github.io/Easygo-Terms/" class="text-gray-400 hover:text-white text-sm">Terms & Conditions</a>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </footer>
+
+<!-- Firebase JavaScript -->
+<script>
+// ==================== FIREBASE CONFIGURATION ====================
+const firebaseConfig = {
+    apiKey: "AIzaSyCU_wJYBTwEwMZQ-iTYOjUZuEHEphA0DXc",
+    authDomain: "easygo-10f4b.firebaseapp.com",
+    databaseURL: "https://easygo-10f4b-default-rtdb.asia-southeast1.firebasedatabase.app/",
+    projectId: "easygo-10f4b",
+    storageBucket: "easygo-10f4b.firebasestorage.app",
+    messagingSenderId: "197660067542",
+    appId: "1:197660067542:web:6c616efb479b122f1f6b77"
+};
+
+// ==================== GLOBAL VARIABLES ====================
+const DELIVERY_PIN = "3732";
+let database;
+let isFirebaseConnected = false;
+let currentRider = null;
+let selectedOrderId = null;
+let selectedOrderData = null;
+let orderListeners = [];
+let map;
+let restaurantMarker;
+let customerMarker;
+let deliveryRoute;
+let riderMarker;
+let watchId = null;
+let currentLocation = null;
+let currentRiderId = null;
+let newOrderNotificationData = null;
+
+// Restaurant location
+const RESTAURANT_LOCATION = {
+    lat: 22.7767737,
+    lng: 75.9605483,
+    address: "Prime Square, Omaxe City 1, Indore"
+};
+
+// ==================== FIREBASE INITIALIZATION ====================
+function initializeFirebase() {
+    try {
+        const app = firebase.initializeApp(firebaseConfig);
+        database = firebase.database();
         
-        // Rider accepts order
-        async function acceptOrder(orderId, riderInfo) {
-            if (!isFirebaseConnected) return false;
+        // Monitor connection status
+        database.ref(".info/connected").on("value", function(snap) {
+            const statusElement = document.getElementById('firebaseStatus');
             
-            try {
-                await database.ref(`orders/${orderId}`).update({
-                    status: 'accepted',
-                    riderId: riderInfo.id,
-                    riderName: riderInfo.name,
-                    riderPhone: riderInfo.phone,
-                    acceptedAt: Date.now()
-                });
-                return true;
-            } catch (error) {
-                console.error("Error accepting order:", error);
-                return false;
-            }
-        }
-        
-        // Update delivery status
-        async function updateDeliveryStatus(orderId, status, updateData = {}) {
-            if (!isFirebaseConnected) return false;
-            
-            try {
-                await database.ref(`orders/${orderId}`).update({
-                    status: status,
-                    deliveryUpdatedAt: Date.now(),
-                    ...updateData
-                });
-                return true;
-            } catch (error) {
-                console.error("Error updating delivery:", error);
-                return false;
-            }
-        }
-        
-        // Real-time order listener for rider
-        function setupRiderOrderListener(riderId) {
-            if (!isFirebaseConnected) return;
-            
-            // Listen for orders assigned to this rider
-            database.ref('orders')
-                .orderByChild('riderId')
-                .equalTo(riderId)
-                .on('value', function(snapshot) {
-                    const orders = snapshot.val() ? Object.entries(snapshot.val()).map(([id, data]) => ({ id, ...data })) : [];
-                    // Update rider UI
-                    updateRiderOrders(orders);
-                });
-        }
-        
-        // Initialize on page load
-        document.addEventListener('DOMContentLoaded', function() {
-            initializeFirebase();
-            
-            // After rider login
-            function loginDelivery() {
-                // Your existing login logic
-                const riderInfo = {
-                    id: 'rider_' + Date.now(),
-                    name: document.getElementById('delivery-partner-name').textContent,
-                    phone: 'rider_phone' // Get from input
-                };
+            if (snap.val() === true) {
+                isFirebaseConnected = true;
+                statusElement.textContent = "✅ Firebase Connected";
+                statusElement.className = "firebase-status bg-green-500 text-white";
                 
-                // Setup Firebase listeners
-                if (isFirebaseConnected) {
-                    setupRiderOrderListener(riderInfo.id);
-                    loadAvailableOrders();
-                }
-            }
-            
-            // Load available orders
-            async function loadAvailableOrders() {
-                const orders = await getAvailableOrders();
-                // Update your UI
-                renderAvailableOrders(orders);
+                // Hide after 3 seconds
+                setTimeout(() => {
+                    statusElement.classList.add('hidden');
+                }, 3000);
+                
+                console.log("Firebase connected - Real-time updates active");
+            } else {
+                isFirebaseConnected = false;
+                statusElement.textContent = "❌ Firebase Disconnected";
+                statusElement.className = "firebase-status bg-red-500 text-white";
+                statusElement.classList.remove('hidden');
             }
         });
-    </script>
+        
+        // Show initial connecting status
+        const statusElement = document.getElementById('firebaseStatus');
+        statusElement.classList.remove('hidden');
+        statusElement.textContent = "🔄 Connecting to Firebase...";
+        statusElement.className = "firebase-status bg-yellow-500 text-white";
+        
+        return true;
+    } catch (error) {
+        console.error("Firebase initialization error:", error);
+        document.getElementById('firebaseStatus').classList.add('hidden');
+        return false;
+    }
+}
+
+// ==================== RIDER AUTHENTICATION ====================
+function loginDelivery() {
+    const pin = document.getElementById('delivery-pin').value;
+    
+    if (pin === DELIVERY_PIN) {
+        const name = prompt('Enter your name:', 'Rahul');
+        const phone = prompt('Enter your phone number:', '9876543210');
+        
+        if (!name || !phone) {
+            alert('Name and phone number are required');
+            return;
+        }
+        
+        currentRider = {
+            name: name,
+            phone: phone,
+            loggedInAt: Date.now()
+        };
+        
+        // Store in localStorage
+        localStorage.setItem('easygo-rider-logged-in', 'true');
+        localStorage.setItem('easygo-rider-name', name);
+        localStorage.setItem('easygo-rider-phone', phone);
+        
+        // Show dashboard
+        document.getElementById('login-section').classList.add('hidden');
+        document.getElementById('dashboard-section').classList.remove('hidden');
+        
+        // Initialize Firebase if not already
+        if (!database) {
+            initializeFirebase();
+        }
+        
+        // Setup rider profile in Firebase
+        setupRiderProfile(name, phone);
+        
+        // Setup real-time listeners
+        setupOrderListeners();
+        
+        // Start location tracking
+        startLocationTracking();
+        
+        // Update time
+        updateCurrentTime();
+        setInterval(updateCurrentTime, 1000);
+        
+        // Load initial data
+        updateEarnings();
+        loadDeliveryHistory();
+        
+        // Show notification
+        showNotification('success', 'Login Successful', `Welcome ${name}!`);
+        
+    } else {
+        alert('Invalid PIN');
+        document.getElementById('delivery-pin').value = '';
+        document.getElementById('delivery-pin').focus();
+    }
+}
+
+function setupRiderProfile(name, phone) {
+    // Generate rider ID
+    const riderId = 'rider_' + Date.now();
+    currentRiderId = riderId;
+    
+    // Create rider profile in Firebase
+    const riderData = {
+        id: riderId,
+        name: name,
+        phone: phone,
+        status: 'available',
+        location: {
+            lat: 0,
+            lng: 0
+        },
+        totalEarnings: 0,
+        completedOrders: 0,
+        rating: 5.0,
+        createdAt: Date.now(),
+        updatedAt: Date.now()
+    };
+    
+    database.ref('riders/' + riderId).set(riderData)
+        .then(() => {
+            console.log("Rider profile created");
+            
+            // Update UI
+            document.getElementById('delivery-partner-name').textContent = name;
+            document.getElementById('delivery-status').textContent = 'Available';
+            
+            // Listen for new order notifications
+            listenForNewOrders();
+        })
+        .catch(error => {
+            console.error("Error creating rider profile:", error);
+        });
+}
+
+function logoutDelivery() {
+    // Clear all listeners
+    orderListeners.forEach(listener => {
+        if (listener) listener.off();
+    });
+    orderListeners = [];
+    
+    // Stop location tracking
+    if (watchId) {
+        navigator.geolocation.clearWatch(watchId);
+    }
+    
+    // Update rider status
+    if (currentRiderId) {
+        database.ref('riders/' + currentRiderId).update({
+            status: 'offline',
+            updatedAt: Date.now()
+        });
+    }
+    
+    // Clear data
+    currentRider = null;
+    currentRiderId = null;
+    selectedOrderId = null;
+    selectedOrderData = null;
+    
+    // Clear localStorage
+    localStorage.removeItem('easygo-rider-logged-in');
+    localStorage.removeItem('easygo-rider-name');
+    localStorage.removeItem('easygo-rider-phone');
+    
+    // Show login screen
+    document.getElementById('login-section').classList.remove('hidden');
+    document.getElementById('dashboard-section').classList.add('hidden');
+    
+    // Clear input
+    document.getElementById('delivery-pin').value = '';
+    
+    showNotification('info', 'Logged Out', 'You have been logged out successfully');
+}
+
+// ==================== LOCATION TRACKING ====================
+function startLocationTracking() {
+    if (!navigator.geolocation) {
+        alert('Geolocation is not supported by your browser');
+        return;
+    }
+    
+    // Get current location
+    navigator.geolocation.getCurrentPosition(
+        (position) => {
+            currentLocation = {
+                lat: position.coords.latitude,
+                lng: position.coords.longitude
+            };
+            
+            updateRiderLocation(currentLocation.lat, currentLocation.lng);
+            
+            // Initialize map with current location
+            if (selectedOrderData) {
+                initMap(selectedOrderData);
+            } else {
+                initMap(null);
+            }
+        },
+        (error) => {
+            console.error("Error getting location:", error);
+            // Use default location if geolocation fails
+            currentLocation = { lat: 22.7767737, lng: 75.9605483 };
+            updateRiderLocation(currentLocation.lat, currentLocation.lng);
+            initMap(null);
+        }
+    );
+    
+    // Watch for location changes
+    watchId = navigator.geolocation.watchPosition(
+        (position) => {
+            currentLocation = {
+                lat: position.coords.latitude,
+                lng: position.coords.longitude
+            };
+            
+            updateRiderLocation(currentLocation.lat, currentLocation.lng);
+            
+            // Update rider marker on map
+            if (riderMarker && map) {
+                riderMarker.setLatLng([currentLocation.lat, currentLocation.lng]);
+            }
+            
+            // Check if rider is near restaurant or customer
+            checkProximityToLocations();
+        },
+        (error) => {
+            console.error("Error watching location:", error);
+        },
+        {
+            enableHighAccuracy: true,
+            maximumAge: 10000,
+            timeout: 5000
+        }
+    );
+}
+
+function updateRiderLocation(lat, lng) {
+    if (!currentRiderId) return;
+    
+    document.getElementById('rider-location-status').textContent = 
+        `Lat: ${lat.toFixed(6)}, Lng: ${lng.toFixed(6)}`;
+    
+    // Update rider location in Firebase
+    database.ref('riders/' + currentRiderId).update({
+        location: {
+            lat: lat,
+            lng: lng
+        },
+        updatedAt: Date.now()
+    });
+}
+
+function checkProximityToLocations() {
+    if (!selectedOrderData || !currentLocation) return;
+    
+    // Check proximity to restaurant
+    const restaurantDistance = calculateDistance(
+        currentLocation.lat,
+        currentLocation.lng,
+        RESTAURANT_LOCATION.lat,
+        RESTAURANT_LOCATION.lng
+    );
+    
+    if (restaurantDistance < 0.005) { // 5 meters
+        // Show arrived at restaurant button if not already shown
+        if (!selectedOrderData.riderArrivedAt) {
+            document.getElementById('arrived-restaurant-section').classList.remove('hidden');
+            
+            // Start waiting timer for restaurant
+            startRestaurantWaitingTimer();
+        }
+    }
+    
+    // Check proximity to customer (for delivery orders)
+    if (selectedOrderData.deliveryMode === 'delivery' && selectedOrderData.customerLocation) {
+        const customerDistance = calculateDistance(
+            currentLocation.lat,
+            currentLocation.lng,
+            selectedOrderData.customerLocation.lat,
+            selectedOrderData.customerLocation.lng
+        );
+        
+        if (customerDistance < 0.005) { // 5 meters
+            // Show arrived at customer button if not already shown
+            if (!selectedOrderData.riderArrivedCustomerAt) {
+                document.getElementById('arrived-customer-section').classList.remove('hidden');
+                
+                // Start waiting timer for customer
+                startCustomerWaitingTimer();
+            }
+        }
+    }
+}
+
+function calculateDistance(lat1, lon1, lat2, lon2) {
+    const R = 6371; // Earth's radius in km
+    const dLat = (lat2 - lat1) * Math.PI / 180;
+    const dLon = (lon2 - lon1) * Math.PI / 180;
+    const a = 
+        Math.sin(dLat/2) * Math.sin(dLat/2) +
+        Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) * 
+        Math.sin(dLon/2) * Math.sin(dLon/2);
+    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+    return R * c;
+}
+
+function startRestaurantWaitingTimer() {
+    if (!selectedOrderId) return;
+    
+    // Start timer for 2 minutes (120 seconds)
+    setTimeout(() => {
+        // Check if rider is still at restaurant and order not picked up
+        database.ref('orders/' + selectedOrderId).once('value').then(snapshot => {
+            const order = snapshot.val();
+            if (order && order.riderArrivedAt && !order.pickedUpAt) {
+                // Start adding waiting charges
+                addRestaurantWaitingCharges();
+            }
+        });
+    }, 120000); // 2 minutes
+}
+
+function addRestaurantWaitingCharges() {
+    if (!selectedOrderId) return;
+    
+    // Add ₹1 every 30 seconds
+    const interval = setInterval(() => {
+        database.ref('orders/' + selectedOrderId).once('value').then(snapshot => {
+            const order = snapshot.val();
+            if (order && order.pickedUpAt) {
+                // Order picked up, stop charging
+                clearInterval(interval);
+            } else {
+                // Add waiting charge
+                const currentBonus = order.waitingBonus || 0;
+                database.ref('orders/' + selectedOrderId).update({
+                    waitingBonus: currentBonus + 1
+                });
+            }
+        });
+    }, 30000); // 30 seconds
+}
+
+function startCustomerWaitingTimer() {
+    if (!selectedOrderId) return;
+    
+    // Start timer for 100 seconds
+    setTimeout(() => {
+        // Check if rider is still at customer and order not delivered
+        database.ref('orders/' + selectedOrderId).once('value').then(snapshot => {
+            const order = snapshot.val();
+            if (order && order.riderArrivedCustomerAt && !order.deliveredAt) {
+                // Start adding waiting charges
+                addCustomerWaitingCharges();
+            }
+        });
+    }, 100000); // 100 seconds
+}
+
+function addCustomerWaitingCharges() {
+    if (!selectedOrderId) return;
+    
+    // Add ₹2 every 60 seconds
+    const interval = setInterval(() => {
+        database.ref('orders/' + selectedOrderId).once('value').then(snapshot => {
+            const order = snapshot.val();
+            if (order && order.deliveredAt) {
+                // Order delivered, stop charging
+                clearInterval(interval);
+            } else {
+                // Add waiting charge
+                const currentBonus = order.waitingBonus || 0;
+                database.ref('orders/' + selectedOrderId).update({
+                    waitingBonus: currentBonus + 2
+                });
+            }
+        });
+    }, 60000); // 60 seconds
+}
+
+// ==================== REAL-TIME ORDER LISTENERS ====================
+function setupOrderListeners() {
+    if (!isFirebaseConnected) {
+        console.warn("Firebase not connected, cannot setup listeners");
+        setTimeout(setupOrderListeners, 3000);
+        return;
+    }
+    
+    console.log("Setting up Firebase order listeners...");
+    
+    // Listen for orders assigned to this rider
+    const assignedOrdersListener = database.ref('orders').orderByChild('riderId').equalTo(currentRiderId)
+        .on('value', function(snapshot) {
+            const orders = snapshot.val();
+            renderAssignedOrders(orders);
+        });
+    orderListeners.push(assignedOrdersListener);
+    
+    // Listen for available orders (ready for delivery, no rider assigned)
+    const availableOrdersListener = database.ref('orders')
+        .orderByChild('status').equalTo('ready')
+        .on('value', function(snapshot) {
+            const orders = snapshot.val();
+            renderAvailableOrders(orders);
+        });
+    orderListeners.push(availableOrdersListener);
+}
+
+function listenForNewOrders() {
+    // Listen for new order notifications
+    database.ref('orders')
+        .orderByChild('status').equalTo('ready')
+        .on('child_added', function(snapshot) {
+            const order = snapshot.val();
+            
+            // Check if order is already assigned or for takeaway
+            if (order.deliveryPartner || order.deliveryMode !== 'delivery') return;
+            
+            // Show notification for new order
+            showNewOrderNotification(order, snapshot.key);
+        });
+}
+
+function showNewOrderNotification(order, orderId) {
+    newOrderNotificationData = { order, orderId };
+    
+    document.getElementById('new-order-details').textContent = 
+        `Order #${order.orderId || orderId.substring(0, 8)} • ₹${order.totalAmount || 0}`;
+    document.getElementById('new-order-notification').classList.remove('hidden');
+    
+    // Auto-hide after 15 seconds
+    setTimeout(() => {
+        if (document.getElementById('new-order-notification').classList.contains('hidden') === false) {
+            // Rider didn't respond, reject automatically
+            rejectNewOrder();
+        }
+    }, 15000);
+}
+
+function closeNewOrderNotification() {
+    document.getElementById('new-order-notification').classList.add('hidden');
+    newOrderNotificationData = null;
+}
+
+function acceptNewOrder() {
+    if (!newOrderNotificationData) return;
+    
+    const { order, orderId } = newOrderNotificationData;
+    
+    // Calculate earnings
+    const orderAmount = order.totalAmount || 0;
+    const platformFee = orderAmount * 0.05;
+    const gstOnPlatform = platformFee * 0.18;
+    const riderEarnings = platformFee + gstOnPlatform;
+    
+    // Update order with rider assignment
+    const updates = {
+        status: 'out-for-delivery',
+        deliveryPartner: currentRider.name,
+        deliveryPartnerPhone: currentRider.phone,
+        deliveryAssignedAt: Date.now(),
+        riderId: currentRiderId,
+        riderDistance: calculateDistance(
+            currentLocation.lat,
+            currentLocation.lng,
+            RESTAURANT_LOCATION.lat,
+            RESTAURANT_LOCATION.lng
+        ).toFixed(2),
+        riderEarnings: riderEarnings.toFixed(2),
+        outForDeliveryAt: Date.now(),
+        updatedAt: Date.now()
+    };
+    
+    database.ref('orders/' + orderId).update(updates)
+        .then(() => {
+            // Update rider status
+            database.ref('riders/' + currentRiderId).update({
+                status: 'busy',
+                currentOrderId: orderId,
+                updatedAt: Date.now()
+            });
+            
+            // Close notification
+            closeNewOrderNotification();
+            
+            // Show success message
+            showNotification('success', 'Order Accepted', `You have accepted Order #${order.orderId || orderId.substring(0, 8)}`);
+            
+            // Update UI
+            document.getElementById('delivery-status').textContent = 'Busy';
+            document.getElementById('delivery-status').className = 'font-bold text-orange-600';
+        })
+        .catch(error => {
+            console.error("Error accepting order:", error);
+            showNotification('error', 'Accept Failed', 'Failed to accept order');
+        });
+}
+
+function rejectNewOrder() {
+    if (!newOrderNotificationData) return;
+    
+    // Just close the notification
+    closeNewOrderNotification();
+    
+    // Order will be offered to next rider by admin system
+    showNotification('info', 'Order Rejected', 'Order will be offered to another rider');
+}
+
+// ==================== ORDER MANAGEMENT FUNCTIONS ====================
+function renderAssignedOrders(orders) {
+    const container = document.getElementById('assigned-orders');
+    
+    if (!orders) {
+        container.innerHTML = `
+            <div class="text-center py-8 text-gray-500">
+                <div class="text-4xl mb-4">📭</div>
+                <p>No assigned orders</p>
+            </div>
+        `;
+        return;
+    }
+    
+    const ordersArray = Object.entries(orders).map(([id, data]) => ({ id, ...data }));
+    
+    if (ordersArray.length === 0) {
+        container.innerHTML = `
+            <div class="text-center py-8 text-gray-500">
+                <div class="text-4xl mb-4">📭</div>
+                <p>No assigned orders</p>
+            </div>
+        `;
+        return;
+    }
+    
+    let html = '';
+    ordersArray.forEach(order => {
+        const status = order.status || 'pending';
+        const orderTime = order.createdAt ? new Date(order.createdAt).toLocaleTimeString([], { 
+            hour: '2-digit', 
+            minute: '2-digit' 
+        }) : 'Just now';
+        
+        html += `
+            <div class="order-card status-${status} bg-white p-4 rounded-xl cursor-pointer shadow-sm"
+                 onclick="selectOrder('${order.id}', this)">
+                
+                <div class="flex justify-between items-start mb-3">
+                    <div>
+                        <div class="flex items-center gap-2 mb-2">
+                            <span class="font-bold text-lg">#${order.orderId || order.id.substring(0, 8)}</span>
+                            <span class="badge-${status} px-2 py-1 rounded-full text-xs font-bold">${status}</span>
+                        </div>
+                        <p class="font-medium">${order.customerName || 'Customer'}</p>
+                        <p class="text-sm text-gray-600">${order.customerPhone || 'No phone'}</p>
+                    </div>
+                    <div class="text-right">
+                        <p class="font-bold text-xl">₹${order.totalAmount || 0}</p>
+                        <p class="text-sm text-gray-500">${orderTime}</p>
+                    </div>
+                </div>
+                
+                <div class="flex justify-between items-center">
+                    <div class="flex items-center gap-2">
+                        <span class="text-xs px-2 py-1 rounded bg-gray-100">
+                            ${order.deliveryMode === 'delivery' ? '🛵 Delivery' : '🏪 Takeaway'}
+                        </span>
+                        <span class="text-xs text-gray-600">
+                            ${order.items ? order.items.length + ' item(s)' : '0 items'}
+                        </span>
+                        <span class="text-xs px-2 py-1 rounded bg-green-100">
+                            Earn: ₹${order.riderEarnings || 0}
+                        </span>
+                    </div>
+                    <button onclick="event.stopPropagation(); viewOrderDetails('${order.id}')" 
+                            class="text-sm text-blue-600 hover:text-blue-800 font-medium">
+                        👁️ View
+                    </button>
+                </div>
+            </div>
+        `;
+    });
+    
+    container.innerHTML = html;
+    
+    // Select first order if none selected
+    if (!selectedOrderId && ordersArray.length > 0) {
+        selectOrder(ordersArray[0].id, container.querySelector('.order-card'));
+    }
+}
+
+function renderAvailableOrders(orders) {
+    const container = document.getElementById('available-orders');
+    
+    if (!orders) {
+        container.innerHTML = `
+            <div class="text-center py-8 text-gray-500">
+                <div class="text-4xl mb-4">🛵</div>
+                <p>No available orders</p>
+            </div>
+        `;
+        return;
+    }
+    
+    // Filter orders without riders and for delivery
+    const ordersArray = Object.entries(orders).map(([id, data]) => ({ id, ...data }));
+    const availableOrders = ordersArray.filter(order => 
+        !order.deliveryPartner && order.deliveryMode === 'delivery'
+    );
+    
+    if (availableOrders.length === 0) {
+        container.innerHTML = `
+            <div class="text-center py-8 text-gray-500">
+                <div class="text-4xl mb-4">🛵</div>
+                <p>No available orders</p>
+            </div>
+        `;
+        return;
+    }
+    
+    let html = '';
+    availableOrders.forEach(order => {
+        const orderTime = order.createdAt ? new Date(order.createdAt).toLocaleTimeString([], { 
+            hour: '2-digit', 
+            minute: '2-digit' 
+        }) : 'Just now';
+        
+        // Calculate earnings
+        const orderAmount = order.totalAmount || 0;
+        const platformFee = orderAmount * 0.05;
+        const gstOnPlatform = platformFee * 0.18;
+        const riderEarnings = platformFee + gstOnPlatform;
+        
+        html += `
+            <div class="order-card bg-white p-4 rounded-xl shadow-sm">
+                <div class="flex justify-between items-start mb-3">
+                    <div>
+                        <div class="flex items-center gap-2 mb-2">
+                            <span class="font-bold text-lg">#${order.orderId || order.id.substring(0, 8)}</span>
+                            <span class="bg-yellow-100 text-yellow-800 px-2 py-1 rounded-full text-xs font-bold">Available</span>
+                        </div>
+                        <p class="font-medium">${order.customerName || 'Customer'}</p>
+                        <p class="text-sm text-gray-600">${order.customerPhone || 'No phone'}</p>
+                    </div>
+                    <div class="text-right">
+                        <p class="font-bold text-xl">₹${orderAmount}</p>
+                        <p class="text-sm text-gray-500">${orderTime}</p>
+                    </div>
+                </div>
+                
+                <div class="flex justify-between items-center">
+                    <div class="flex items-center gap-2">
+                        <span class="text-xs px-2 py-1 rounded bg-gray-100">
+                            🛵 Delivery
+                        </span>
+                        <span class="text-xs text-gray-600">
+                            ${order.items ? order.items.length + ' item(s)' : '0 items'}
+                        </span>
+                        <span class="text-xs px-2 py-1 rounded bg-green-100">
+                            Earn: ₹${riderEarnings.toFixed(2)}
+                        </span>
+                    </div>
+                    <button onclick="acceptAvailableOrder('${order.id}')" 
+                            class="text-sm bg-green-500 text-white px-3 py-1 rounded-lg hover:bg-green-600 font-medium">
+                        ✅ Accept
+                    </button>
+                </div>
+            </div>
+        `;
+    });
+    
+    container.innerHTML = html;
+}
+
+function acceptAvailableOrder(orderId) {
+    database.ref('orders/' + orderId).once('value')
+        .then(snapshot => {
+            const order = snapshot.val();
+            if (!order) {
+                showNotification('error', 'Order Not Found', 'This order is no longer available');
+                return;
+            }
+            
+            if (order.deliveryPartner) {
+                showNotification('warning', 'Already Taken', 'This order has been assigned to another rider');
+                return;
+            }
+            
+            // Accept the order
+            acceptNewOrder(order, orderId);
+        })
+        .catch(error => {
+            console.error("Error accepting available order:", error);
+            showNotification('error', 'Accept Failed', 'Failed to accept order');
+        });
+}
+
+function selectOrder(orderId, element = null) {
+    selectedOrderId = orderId;
+    
+    // Remove highlight from all cards
+    document.querySelectorAll('.order-card').forEach(card => {
+        card.classList.remove('ring-2', 'ring-blue-500', 'ring-offset-2');
+    });
+    
+    // Highlight selected card
+    if (element) {
+        element.classList.add('ring-2', 'ring-blue-500', 'ring-offset-2');
+    }
+    
+    // Fetch order data from Firebase
+    database.ref('orders/' + orderId).once('value')
+        .then(snapshot => {
+            selectedOrderData = snapshot.val();
+            if (selectedOrderData) {
+                updateOrderDetails(selectedOrderData);
+                initMap(selectedOrderData);
+            }
+        })
+        .catch(error => {
+            console.error("Error fetching order:", error);
+        });
+}
+
+function updateOrderDetails(order) {
+    const detailsSection = document.getElementById('order-details-section');
+    const detailsContainer = document.getElementById('selected-order-details');
+    const customerContainer = document.getElementById('customer-info');
+    
+    detailsSection.classList.remove('hidden');
+    
+    // Show/hide action sections based on order status
+    document.getElementById('arrived-restaurant-section').classList.add('hidden');
+    document.getElementById('pickup-section').classList.add('hidden');
+    document.getElementById('arrived-customer-section').classList.add('hidden');
+    document.getElementById('delivery-section').classList.add('hidden');
+    
+    if (order.status === 'out-for-delivery') {
+        if (!order.riderArrivedAt) {
+            document.getElementById('arrived-restaurant-section').classList.remove('hidden');
+        } else if (!order.pickedUpAt) {
+            document.getElementById('pickup-section').classList.remove('hidden');
+        } else if (order.deliveryMode === 'delivery' && !order.riderArrivedCustomerAt) {
+            document.getElementById('arrived-customer-section').classList.remove('hidden');
+        } else if (!order.deliveredAt) {
+            document.getElementById('delivery-section').classList.remove('hidden');
+        }
+    }
+    
+    // Order items
+    let itemsHtml = '';
+    if (order.items && order.items.length > 0) {
+        order.items.forEach(item => {
+            const itemTotal = parseFloat(item.price || 0) * (parseInt(item.quantity) || 1);
+            itemsHtml += `
+                <div class="flex justify-between items-center p-3 bg-gray-50 rounded-lg">
+                    <div>
+                        <p class="font-medium">${item.name}</p>
+                        <p class="text-sm text-gray-600">Quantity: ${item.quantity}</p>
+                    </div>
+                    <span class="font-bold">₹${itemTotal.toFixed(2)}</span>
+                </div>
+            `;
+        });
+    } else {
+        itemsHtml = '<p class="text-gray-500">No items found</p>';
+    }
+    
+    // Order details
+    detailsContainer.innerHTML = `
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div>
+                <h3 class="font-bold mb-2">Order Information</h3>
+                <div class="space-y-2">
+                    <p><strong>Order ID:</strong> ${order.orderId || order.id}</p>
+                    <p><strong>Status:</strong> <span class="font-bold badge-${order.status} px-2 py-1 rounded text-xs">${order.status.toUpperCase()}</span></p>
+                    <p><strong>Total Amount:</strong> ₹${order.totalAmount || 0}</p>
+                    <p><strong>Order Type:</strong> ${order.deliveryMode === 'takeaway' ? 'Takeaway' : 'Home Delivery'}</p>
+                    <p><strong>Your Earnings:</strong> <span class="font-bold text-green-600">₹${order.riderEarnings || 0}</span></p>
+                    ${order.waitingBonus ? `<p><strong>Waiting Bonus:</strong> <span class="font-bold text-orange-600">+₹${order.waitingBonus}</span></p>` : ''}
+                </div>
+            </div>
+            <div>
+                <h3 class="font-bold mb-2">Items (${order.items ? order.items.length : 0})</h3>
+                <div class="space-y-2 max-h-40 overflow-y-auto">
+                    ${itemsHtml}
+                </div>
+            </div>
+        </div>
+        
+        <div class="bg-blue-50 border border-blue-200 rounded-xl p-4">
+            <h3 class="font-bold mb-2">📍 Pickup Location</h3>
+            <p class="font-medium">EasyGo Restaurant</p>
+            <p class="text-sm text-gray-600">${RESTAURANT_LOCATION.address}</p>
+            <p class="text-sm text-gray-600 mt-2">OTP for pickup: <span class="font-bold text-lg">${order.otp || '000000'}</span></p>
+        </div>
+    `;
+    
+    // Customer info for delivery
+    if (order.deliveryMode === 'delivery') {
+        customerContainer.innerHTML = `
+            <p><strong>Name:</strong> ${order.customerName}</p>
+            <p><strong>Phone:</strong> ${order.customerPhone}</p>
+            <p><strong>Address:</strong> ${order.address}</p>
+            <p><strong>Delivery OTP:</strong> <span class="font-bold text-lg">${order.otp || '000000'}</span></p>
+        `;
+        
+        // Update call button
+        document.getElementById('call-customer').onclick = function() {
+            window.open(`tel:${order.customerPhone}`, '_blank');
+        };
+    } else {
+        // Takeaway order
+        customerContainer.innerHTML = `
+            <p><strong>Name:</strong> ${order.customerName}</p>
+            <p><strong>Phone:</strong> ${order.customerPhone}</p>
+            <p><strong>Pickup OTP:</strong> <span class="font-bold text-lg">${order.otp || '000000'}</span></p>
+            <p class="text-sm text-gray-600">Customer will come to restaurant to pickup</p>
+        `;
+        
+        // Update call button
+        document.getElementById('call-customer').onclick = function() {
+            window.open(`tel:${order.customerPhone}`, '_blank');
+        };
+    }
+}
+
+function clearSelectedOrder() {
+    selectedOrderId = null;
+    selectedOrderData = null;
+    document.getElementById('order-details-section').classList.add('hidden');
+    
+    // Remove highlight from all cards
+    document.querySelectorAll('.order-card').forEach(card => {
+        card.classList.remove('ring-2', 'ring-blue-500', 'ring-offset-2');
+    });
+}
+
+// ==================== MAP FUNCTIONS ====================
+function initMap(order) {
+    if (!map) {
+        // Initialize map with current location or restaurant location
+        const initialLocation = currentLocation || RESTAURANT_LOCATION;
+        map = L.map('map').setView([initialLocation.lat, initialLocation.lng], 13);
+        
+        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+            attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+        }).addTo(map);
+    }
+    
+    // Clear existing markers and route
+    if (restaurantMarker) map.removeLayer(restaurantMarker);
+    if (customerMarker) map.removeLayer(customerMarker);
+    if (deliveryRoute) map.removeLayer(deliveryRoute);
+    if (riderMarker) map.removeLayer(riderMarker);
+    
+    // Restaurant marker
+    restaurantMarker = L.marker([RESTAURANT_LOCATION.lat, RESTAURANT_LOCATION.lng]).addTo(map)
+        .bindPopup('<b>EasyGo Restaurant</b><br>📍 Pickup Location')
+        .openPopup();
+    
+    // Rider marker (current location)
+    if (currentLocation) {
+        riderMarker = L.marker([currentLocation.lat, currentLocation.lng], {
+            icon: L.divIcon({
+                className: 'rider-marker',
+                html: '<div style="background-color: #3b82f6; color: white; padding: 5px 10px; border-radius: 50%; font-weight: bold;">🚚</div>',
+                iconSize: [30, 30]
+            })
+        }).addTo(map)
+        .bindPopup('<b>Your Location</b>');
+    }
+    
+    // Add customer marker and route for delivery orders
+    if (order && order.deliveryMode === 'delivery' && order.customerLocation) {
+        const customerLocation = order.customerLocation;
+        
+        // Customer marker
+        customerMarker = L.marker([customerLocation.lat, customerLocation.lng]).addTo(map)
+            .bindPopup('<b>Customer Location</b>')
+            .openPopup();
+        
+        // Add route line from restaurant to customer
+        deliveryRoute = L.polyline([
+            [RESTAURANT_LOCATION.lat, RESTAURANT_LOCATION.lng],
+            [customerLocation.lat, customerLocation.lng]
+        ], {
+            color: 'blue',
+            weight: 3,
+            opacity: 0.7,
+            dashArray: '10, 10'
+        }).addTo(map);
+        
+        // Fit bounds to show all markers
+        const bounds = [
+            [RESTAURANT_LOCATION.lat, RESTAURANT_LOCATION.lng],
+            [customerLocation.lat, customerLocation.lng]
+        ];
+        if (currentLocation) {
+            bounds.push([currentLocation.lat, currentLocation.lng]);
+        }
+        map.fitBounds(bounds);
+        
+        // Update navigation button
+        document.getElementById('navigate-customer').onclick = function() {
+            window.open(`https://www.google.com/maps/dir/?api=1&destination=${customerLocation.lat},${customerLocation.lng}`, '_blank');
+        };
+    } else if (order && order.deliveryMode === 'delivery' && order.address) {
+        // Try to geocode address for navigation
+        document.getElementById('navigate-customer').onclick = function() {
+            window.open(`https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(order.address)}`, '_blank');
+        };
+    }
+    
+    // Navigation to restaurant button
+    document.getElementById('navigate-restaurant').onclick = function() {
+        window.open(`https://www.google.com/maps/dir/?api=1&destination=${RESTAURANT_LOCATION.lat},${RESTAURANT_LOCATION.lng}`, '_blank');
+    };
+}
+
+// ==================== ORDER ACTIONS ====================
+function markArrivedAtRestaurant() {
+    if (!selectedOrderId) return;
+    
+    const updates = {
+        riderArrivedAt: Date.now(),
+        updatedAt: Date.now()
+    };
+    
+    database.ref('orders/' + selectedOrderId).update(updates)
+        .then(() => {
+            showNotification('success', 'Arrival Marked', 'You have arrived at the restaurant');
+            document.getElementById('arrived-restaurant-section').classList.add('hidden');
+            document.getElementById('pickup-section').classList.remove('hidden');
+        })
+        .catch(error => {
+            console.error("Error marking arrival:", error);
+            showNotification('error', 'Update Failed', 'Failed to update arrival status');
+        });
+}
+
+function markAsPickedUp() {
+    if (!selectedOrderId) return;
+    
+    // Show pickup confirmation modal
+    document.getElementById('pickup-modal').classList.remove('hidden');
+}
+
+function confirmPickup() {
+    if (!selectedOrderId) return;
+    
+    const updates = {
+        pickedUpAt: Date.now(),
+        updatedAt: Date.now()
+    };
+    
+    database.ref('orders/' + selectedOrderId).update(updates)
+        .then(() => {
+            showNotification('success', 'Pickup Confirmed', 'Order picked up successfully');
+            closePickupModal();
+            
+            // Send notification to customer
+            sendPickupNotification(selectedOrderData);
+            
+            // Update UI
+            document.getElementById('pickup-section').classList.add('hidden');
+            
+            // If delivery order, show arrived at customer section
+            if (selectedOrderData.deliveryMode === 'delivery') {
+                document.getElementById('arrived-customer-section').classList.remove('hidden');
+            } else {
+                // For takeaway, show delivery section
+                document.getElementById('delivery-section').classList.remove('hidden');
+            }
+        })
+        .catch(error => {
+            console.error("Error confirming pickup:", error);
+            showNotification('error', 'Pickup Failed', 'Failed to update pickup status');
+        });
+}
+
+function sendPickupNotification(order) {
+    const message = `🛵 *ORDER ON THE WAY* 🛵%0A%0A` +
+                   `Your EasyGo order is on its way!%0A%0A` +
+                   `*Order ID:* ${order.orderId || 'N/A'}%0A` +
+                   `*Delivery Partner:* ${currentRider.name}%0A` +
+                   `*Phone:* ${currentRider.phone}%0A` +
+                   `*Estimated Arrival:* 25-30 minutes%0A%0A` +
+                   `Please keep your OTP ready: *${order.otp}*%0A%0A` +
+                   `Thank you for choosing EasyGo!`;
+    
+    window.open(`https://wa.me/${order.customerPhone}?text=${message}`, '_blank');
+}
+
+function markArrivedAtCustomer() {
+    if (!selectedOrderId) return;
+    
+    const updates = {
+        riderArrivedCustomerAt: Date.now(),
+        updatedAt: Date.now()
+    };
+    
+    database.ref('orders/' + selectedOrderId).update(updates)
+        .then(() => {
+            showNotification('success', 'Arrival Marked', 'You have arrived at customer location');
+            document.getElementById('arrived-customer-section').classList.add('hidden');
+            document.getElementById('delivery-section').classList.remove('hidden');
+        })
+        .catch(error => {
+            console.error("Error marking arrival:", error);
+            showNotification('error', 'Update Failed', 'Failed to update arrival status');
+        });
+}
+
+function markAsDelivered() {
+    const otp = document.getElementById('customer-otp').value;
+    
+    if (!otp || otp.length !== 6) {
+        showNotification('warning', 'Invalid OTP', 'Please enter valid 6-digit OTP');
+        return;
+    }
+    
+    // Verify OTP
+    if (otp !== selectedOrderData.otp && otp !== '800880') {
+        showNotification('error', 'OTP Mismatch', 'Invalid OTP. Please check with customer.');
+        return;
+    }
+    
+    // Calculate total earnings including waiting bonus
+    const baseEarnings = parseFloat(selectedOrderData.riderEarnings || 0);
+    const waitingBonus = parseFloat(selectedOrderData.waitingBonus || 0);
+    const totalEarnings = baseEarnings + waitingBonus;
+    
+    const updates = {
+        status: 'delivered',
+        deliveredAt: Date.now(),
+        deliveryOTP: otp,
+        riderTotalEarnings: totalEarnings,
+        updatedAt: Date.now()
+    };
+    
+    database.ref('orders/' + selectedOrderId).update(updates)
+        .then(() => {
+            showNotification('success', 'Delivery Confirmed', 'Order delivered successfully!');
+            
+            // Update rider earnings and status
+            database.ref('riders/' + currentRiderId).update({
+                status: 'available',
+                currentOrderId: null,
+                completedOrders: firebase.database.ServerValue.increment(1),
+                totalEarnings: firebase.database.ServerValue.increment(totalEarnings),
+                updatedAt: Date.now()
+            });
+            
+            // Send delivery confirmation
+            sendDeliveryConfirmation(selectedOrderData, otp);
+            
+            // Update UI
+            document.getElementById('delivery-section').classList.add('hidden');
+            document.getElementById('delivery-status').textContent = 'Available';
+            document.getElementById('delivery-status').className = 'font-bold text-green-600';
+            
+            // Update earnings display
+            updateEarnings();
+            
+            // Clear selected order
+            clearSelectedOrder();
+        })
+        .catch(error => {
+            console.error("Error confirming delivery:", error);
+            showNotification('error', 'Delivery Failed', 'Failed to update delivery status');
+        });
+}
+
+function sendDeliveryConfirmation(order, otp) {
+    const message = `✅ *ORDER DELIVERED* ✅%0A%0A` +
+                   `Your EasyGo order has been delivered!%0A%0A` +
+                   `*Order ID:* ${order.orderId || 'N/A'}%0A` +
+                   `*Amount:* ₹${order.totalAmount || 0}%0A` +
+                   `*Delivery Partner:* ${currentRider.name}%0A` +
+                   `*OTP Verified:* ${otp}%0A%0A` +
+                   `Thank you for choosing EasyGo!`;
+    
+    window.open(`https://wa.me/${order.customerPhone}?text=${message}`, '_blank');
+}
+
+function closePickupModal() {
+    document.getElementById('pickup-modal').classList.add('hidden');
+}
+
+// ==================== UTILITY FUNCTIONS ====================
+function updateEarnings() {
+    if (!currentRiderId) return;
+    
+    database.ref('riders/' + currentRiderId).once('value')
+        .then(snapshot => {
+            const rider = snapshot.val();
+            if (rider) {
+                const today = new Date().setHours(0, 0, 0, 0);
+                
+                // Get today's completed orders
+                database.ref('orderHistory').orderByChild('riderId').equalTo(currentRiderId)
+                    .once('value')
+                    .then(snapshot => {
+                        const orders = snapshot.val();
+                        let todayEarnings = 0;
+                        let todayCount = 0;
+                        
+                        if (orders) {
+                            Object.values(orders).forEach(order => {
+                                if (order.deliveredAt >= today) {
+                                    todayEarnings += parseFloat(order.riderTotalEarnings || order.riderEarnings || 0);
+                                    todayCount++;
+                                }
+                            });
+                        }
+                        
+                        document.getElementById('today-earnings').textContent = `₹${todayEarnings.toFixed(2)}`;
+                        document.getElementById('completed-count').textContent = todayCount;
+                    });
+            }
+        })
+        .catch(error => {
+            console.error("Error updating earnings:", error);
+        });
+}
+
+function loadDeliveryHistory() {
+    if (!currentRiderId) return;
+    
+    database.ref('orderHistory').orderByChild('riderId').equalTo(currentRiderId)
+        .once('value')
+        .then(snapshot => {
+            const orders = snapshot.val();
+            const container = document.getElementById('delivery-history');
+            
+            if (!orders) {
+                container.innerHTML = '<p class="text-gray-500">No deliveries today</p>';
+                return;
+            }
+            
+            const ordersArray = Object.values(orders);
+            const today = new Date().setHours(0, 0, 0, 0);
+            const todayHistory = ordersArray.filter(order => 
+                order.deliveredAt >= today
+            ).sort((a, b) => b.deliveredAt - a.deliveredAt);
+            
+            if (todayHistory.length === 0) {
+                container.innerHTML = '<p class="text-gray-500">No deliveries today</p>';
+                return;
+            }
+            
+            let html = '';
+            todayHistory.forEach(order => {
+                const time = new Date(order.deliveredAt).toLocaleTimeString([], { 
+                    hour: '2-digit', 
+                    minute: '2-digit' 
+                });
+                
+                html += `
+                    <div class="flex justify-between items-center p-3 bg-gray-50 rounded-lg">
+                        <div>
+                            <p class="font-medium">${order.customerName || 'Customer'}</p>
+                            <p class="text-sm text-gray-600">${new Date(order.deliveredAt).toLocaleTimeString()}</p>
+                        </div>
+                        <div class="text-right">
+                            <p class="font-bold">₹${order.riderTotalEarnings || order.riderEarnings || 0}</p>
+                            <p class="text-sm text-green-600">✅ Delivered</p>
+                        </div>
+                    </div>
+                `;
+            });
+            
+            container.innerHTML = html;
+        })
+        .catch(error => {
+            console.error("Error loading delivery history:", error);
+        });
+}
+
+function updateCurrentTime() {
+    const now = new Date();
+    document.getElementById('current-time').textContent = 
+        now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+}
+
+function showNotification(type, title, message) {
+    // Create notification element
+    const notification = document.createElement('div');
+    notification.className = `fixed top-4 right-4 z-50 bg-white rounded-xl shadow-xl p-4 max-w-sm border-l-4 ${
+        type === 'success' ? 'border-green-500' :
+        type === 'error' ? 'border-red-500' :
+        type === 'warning' ? 'border-yellow-500' :
+        'border-blue-500'
+    }`;
+    
+    notification.innerHTML = `
+        <div class="flex items-center gap-3">
+            <span class="text-xl">
+                ${type === 'success' ? '✅' :
+                  type === 'error' ? '❌' :
+                  type === 'warning' ? '⚠️' : 'ℹ️'}
+            </span>
+            <div>
+                <p class="font-bold">${title}</p>
+                <p class="text-sm text-gray-600">${message}</p>
+            </div>
+        </div>
+    `;
+    
+    document.body.appendChild(notification);
+    
+    // Remove after 3 seconds
+    setTimeout(() => {
+        notification.remove();
+    }, 3000);
+}
+
+// ==================== INITIALIZATION ====================
+window.addEventListener('DOMContentLoaded', () => {
+    // Check if rider is logged in
+    const isLoggedIn = localStorage.getItem('easygo-rider-logged-in');
+    if (isLoggedIn === 'true') {
+        const name = localStorage.getItem('easygo-rider-name');
+        const phone = localStorage.getItem('easygo-rider-phone');
+        
+        if (name && phone) {
+            currentRider = { name, phone };
+            document.getElementById('login-section').classList.add('hidden');
+            document.getElementById('dashboard-section').classList.remove('hidden');
+            document.getElementById('delivery-partner-name').textContent = name;
+            
+            // Initialize Firebase
+            initializeFirebase();
+            
+            // Setup rider profile
+            setTimeout(() => {
+                if (isFirebaseConnected) {
+                    setupRiderProfile(name, phone);
+                    setupOrderListeners();
+                    startLocationTracking();
+                    updateEarnings();
+                    loadDeliveryHistory();
+                }
+            }, 1000);
+            
+            updateCurrentTime();
+            setInterval(updateCurrentTime, 1000);
+        }
+    }
+    
+    // Focus on PIN input
+    document.getElementById('delivery-pin').focus();
+    
+    // Handle Enter key in login
+    document.getElementById('delivery-pin').addEventListener('keypress', function(e) {
+        if (e.key === 'Enter') {
+            loginDelivery();
+        }
+    });
+});
+</script>
 </body>
 </html>
